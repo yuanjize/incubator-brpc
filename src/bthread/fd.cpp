@@ -411,7 +411,7 @@ static inline EpollThread& get_epoll_thread(int fd) {
 }
 
 //TODO(zhujiashun): change name
-int stop_and_join_epoll_threads() {
+int stop_and_join_epoll_threads() { // 首先join bthread，然后close epoll操作
     // Returns -1 if any epoll thread failed to stop.
     int rc = 0;
     for (size_t i = 0; i < BTHREAD_EPOLL_THREAD_NUM; ++i) {

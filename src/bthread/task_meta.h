@@ -70,11 +70,11 @@ struct TaskMeta {
 
     // The identifier. It does not have to be here, however many code is
     // simplified if they can get tid from TaskMeta.
-    bthread_t tid;
+    bthread_t tid;  // bthread id
 
     // User function and argument
-    void* (*fn)(void*);
-    void* arg;
+    void* (*fn)(void*); // bthread要执行的任务
+    void* arg; // fn的参数
 
     // Stack of this task.
     ContextualStack* stack;
@@ -83,7 +83,7 @@ struct TaskMeta {
     bthread_attr_t attr;
     
     // Statistics
-    int64_t cpuwide_start_ns;
+    int64_t cpuwide_start_ns; // 看起来是bthread启动时间
     TaskStatistics stat;
 
     // bthread local storage, sync with tls_bls (defined in task_group.cpp)

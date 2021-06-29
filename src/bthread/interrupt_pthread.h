@@ -28,7 +28,7 @@ namespace bthread {
 
 // Make blocking ops in the pthread returns -1 and EINTR.
 // Returns what pthread_kill returns.
-int interrupt_pthread(pthread_t th);
+int interrupt_pthread(pthread_t th);// 看起来就是想干掉当前线程执行的block操作
 
 }  // namespace bthread
 

@@ -54,7 +54,12 @@ void run_worker_startfn() {
         g_worker_startfn();
     }
 }
-
+/*
+pthread 创建之后会调用该函数：
+  1.TaskControl创建TaskGroup
+  2.tls_task_group=TaskGroup
+  3.进loop
+*/
 void* TaskControl::worker_thread(void* arg) {
     run_worker_startfn();    
 #ifdef BAIDU_INTERNAL
@@ -84,7 +89,7 @@ void* TaskControl::worker_thread(void* arg) {
     c->_nworkers << -1;
     return NULL;
 }
-
+// 创建group并关联到TaskControl上
 TaskGroup* TaskControl::create_group() {
     TaskGroup* g = new (std::nothrow) TaskGroup(this);
     if (NULL == g) {
@@ -143,6 +148,7 @@ TaskControl::TaskControl()
     CHECK(_groups) << "Fail to create array of groups";
 }
 
+// 该函数会创建concurrency个pthread，每个pthread都会运行worker_thread函数
 int TaskControl::init(int concurrency) {
     if (_concurrency != 0) {
         LOG(ERROR) << "Already initialized";
@@ -181,7 +187,7 @@ int TaskControl::init(int concurrency) {
     }
     return 0;
 }
-
+// 添加num个新的pthread线程
 int TaskControl::add_workers(int num) {
     if (num <= 0) {
         return 0;
@@ -209,7 +215,7 @@ int TaskControl::add_workers(int num) {
     _workers.resize(_concurrency.load(butil::memory_order_relaxed));
     return _concurrency.load(butil::memory_order_relaxed) - old_concurency;
 }
-
+// 随机选出来一个TaskGroup
 TaskGroup* TaskControl::choose_one_group() {
     const size_t ngroup = _ngroup.load(butil::memory_order_acquire);
     if (ngroup != 0) {
@@ -220,11 +226,15 @@ TaskGroup* TaskControl::choose_one_group() {
 }
 
 extern int stop_and_join_epoll_threads();
-
+/*
+1.先join brthead,然后关闭线程的epoll操作。
+2.发送信号，打断每个pthread的block操作。
+3.join 每个pthread，等待线程结束
+*/ 
 void TaskControl::stop_and_join() {
     // Close epoll threads so that worker threads are not waiting on epoll(
     // which cannot be woken up by signal_task below)
-    CHECK_EQ(0, stop_and_join_epoll_threads());
+    CHECK_EQ(0, stop_and_join_epoll_threads());  // 所有bthread和pthread都结束
 
     // Stop workers
     {
@@ -235,11 +245,11 @@ void TaskControl::stop_and_join() {
     for (int i = 0; i < PARKING_LOT_NUM; ++i) {
         _pl[i].stop();
     }
-    // Interrupt blocking operations.
+    // Interrupt blocking operations. 通过发信信号干掉线程的block操作
     for (size_t i = 0; i < _workers.size(); ++i) {
         interrupt_pthread(_workers[i]);
     }
-    // Join workers
+    // Join workers 等待线程退出
     for (size_t i = 0; i < _workers.size(); ++i) {
         pthread_join(_workers[i], NULL);
     }
@@ -259,7 +269,7 @@ TaskControl::~TaskControl() {
     free(_groups);
     _groups = NULL;
 }
-
+// group放到_groups中，然后_ngroup+1
 int TaskControl::_add_group(TaskGroup* g) {
     if (__builtin_expect(NULL == g, 0)) {
         return -1;

@@ -389,7 +389,7 @@ int TaskGroup::start_foreground(TaskGroup** pg,
 
     TaskGroup* g = *pg;
     g->_control->_nbthreads << 1;
-    if (g->is_current_pthread_task()) {
+    if (g->is_current_pthread_task()) { // 当前是pthread模式，第一个task进入pthread就是这宗情况？
         // never create foreground task in pthread.
         g->ready_to_run(m->tid, (using_attr.flags & BTHREAD_NOSIGNAL));
     } else {
@@ -642,7 +642,11 @@ void TaskGroup::destroy_self() {
         CHECK(false);
     }
 }
-
+/*
+1.bthread_t放入队列
+2.nosignal->_num_nosignal++
+  else: signal_task
+*/
 void TaskGroup::ready_to_run(bthread_t tid, bool nosignal) {
     push_rq(tid);
     if (nosignal) {
