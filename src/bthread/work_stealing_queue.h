@@ -27,7 +27,9 @@
 #include "butil/logging.h"
 
 namespace bthread {
-
+//workstealing的意义：正常情况下每个线程对应一个任务队列，如果一个线程把自己队列的任务消耗完了，那么就闲置了。这样很浪费CPU，所以好的办法是允许线程去其他线程的消息队列偷消息，这样就不浪费线程了。
+//一般的线程都从队列的头部拿消息。steal就是从队列尾部拿。
+//WorkStealingQueue的设计就是bottom作为头部，top作为尾部。push和pop都是操纵的头部（bottom），steal操纵的是尾部（top）。其实这个玩意是一个栈
 template <typename T>
 class WorkStealingQueue {
 public:
@@ -79,7 +81,6 @@ public:
         _bottom.store(b + 1, butil::memory_order_release);
         return true;
     }
-
     // Pop an item from the queue.
     // Returns true on popped and the item is written to `val'.
     // May run in parallel with steal().
@@ -104,7 +105,7 @@ public:
         if (t != newb) {
             return true;
         }
-        // Single last element, compete with steal()
+        // Single last element, compete with steal()  then t==b
         const bool popped = _top.compare_exchange_strong(
             t, t + 1, butil::memory_order_seq_cst, butil::memory_order_relaxed);
         _bottom.store(b, butil::memory_order_relaxed);

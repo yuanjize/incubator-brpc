@@ -341,7 +341,7 @@ int TaskControl::_destroy_group(TaskGroup* g) {
     }
     return 0;
 }
-
+// 当前worker没有任务的时候从其他taskgroup线程偷一个bthread_t，并塞入到tid里面。
 bool TaskControl::steal_task(bthread_t* tid, size_t* seed, size_t offset) {
     // 1: Acquiring fence is paired with releasing fence in _add_group to
     // avoid accessing uninitialized slot of _groups.
@@ -370,7 +370,7 @@ bool TaskControl::steal_task(bthread_t* tid, size_t* seed, size_t offset) {
     *seed = s;
     return stolen;
 }
-
+// 随机唤醒最多2个PARKING_LOT，每个PARKING_LOT每轮唤醒一个线程
 void TaskControl::signal_task(int num_task) {
     if (num_task <= 0) {
         return;

@@ -210,7 +210,7 @@ friend class TaskControl;
     // Returns true on success, false is treated as permanent error and the
     // loop calling this function should end.
     bool wait_task(bthread_t* tid);
-
+   // 自己的_remote_rq有的话就从这里拿，这里没有就去别的taskgroup偷。看起来自己的task是存储在_remote_rq中
     bool steal_task(bthread_t* tid) {
         if (_remote_rq.pop(tid)) {
             return true;
@@ -229,7 +229,7 @@ friend class TaskControl;
     
     // the control that this group belongs to
     TaskControl* _control;
-    int _num_nosignal;
+    int _num_nosignal; // 和_remote_num_nosignal 意义相同，只是对应的队列不同
     int _nsignaled;
     // last scheduling time
     int64_t _last_run_ns;
@@ -247,10 +247,11 @@ friend class TaskControl;
     size_t _steal_offset;
     ContextualStack* _main_stack;
     bthread_t _main_tid;
-    WorkStealingQueue<bthread_t> _rq;
-    RemoteTaskQueue _remote_rq;
-    int _remote_num_nosignal;
-    int _remote_nsignaled;
+    // 看起来是有自己的task就
+    WorkStealingQueue<bthread_t> _rq;// 就是一个队列，双向的，头部和尾部都可以pop。如果bthreadworker线程创建的那么就放在这个队列
+    RemoteTaskQueue _remote_rq; //新的bthread写到这个里面，非worker线程创建的就放在这里。
+    int _remote_num_nosignal; //当前多有少个bthread创建爱你的时候选择不唤醒线程，该书之每次遇到一个唤醒的都会清零。
+    int _remote_nsignaled;  //记录唤醒过多少个线程，这个是singal——task参数的和
 };
 
 }  // namespace bthread

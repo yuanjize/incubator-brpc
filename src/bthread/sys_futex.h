@@ -34,13 +34,13 @@ namespace bthread {
 #ifndef FUTEX_PRIVATE_FLAG
 #define FUTEX_PRIVATE_FLAG 128
 #endif
-
+//如果addr1==expected 那么sleep直到futexwake触发。如果不相等，那么直接return EAGAIN.
 inline int futex_wait_private(
     void* addr1, int expected, const timespec* timeout) {
     return syscall(SYS_futex, addr1, (FUTEX_WAIT | FUTEX_PRIVATE_FLAG),
                    expected, timeout, NULL, 0);
 }
-
+// 唤起来N个等待在addr1的线程
 inline int futex_wake_private(void* addr1, int nwake) {
     return syscall(SYS_futex, addr1, (FUTEX_WAKE | FUTEX_PRIVATE_FLAG),
                    nwake, NULL, NULL, 0);

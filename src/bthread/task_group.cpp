@@ -36,7 +36,7 @@
 #include "bthread/task_group.h"
 #include "bthread/timer_thread.h"
 #include "bthread/errno.h"
-
+//可能执行嗯唤醒动作的函数ready_to_run_remote，ready_to_run，flush_nosignal_tasks_remote_locked，flush_nosignal_tasks 每一对函数意义宪法同，只是所保护的队列不同
 namespace bthread {
 
 static const bthread_attr_t BTHREAD_ATTR_TASKGROUP = {
@@ -121,7 +121,7 @@ bool TaskGroup::wait_task(bthread_t* tid) {
         if (_last_pl_state.stopped()) {
             return false;
         }
-        _pl->wait(_last_pl_state);
+        _pl->wait(_last_pl_state); //这个玩意就是判断赏赐循环和被次循环之间有没有新的任务进来，没有就接着wait，有就继续循环尝试窃取
         if (steal_task(tid)) {
             return true;
         }
@@ -643,10 +643,12 @@ void TaskGroup::destroy_self() {
     }
 }
 /*
-1.bthread_t放入队列
-2.nosignal->_num_nosignal++
-  else: signal_task
-*/
+新的bthread_t入队列，这个函数可能唤醒新的线程
+ 该函数和ready_to_run_remote区别是，这个函数把bthread放到WORKING——STEAL队列中。两个函数只是队列一样。
+
+ 放在那个队列是根据调用bthread_start_background时候选出来的group决定的
+ 如果TaskGroup和调用bthread_start_background的线程是一个线程，那么就用ready_to_run 否则使用ready_to_run_remote
+ */
 void TaskGroup::ready_to_run(bthread_t tid, bool nosignal) {
     push_rq(tid);
     if (nosignal) {
@@ -667,16 +669,17 @@ void TaskGroup::flush_nosignal_tasks() {
         _control->signal_task(val);
     }
 }
-
+//准备运行一个新的bthread，这个操作可能个会唤醒等待的线程，该函数将bthread放到_remote_rq队列中
 void TaskGroup::ready_to_run_remote(bthread_t tid, bool nosignal) {
     _remote_rq._mutex.lock();
-    while (!_remote_rq.push_locked(tid)) {
+    while (!_remote_rq.push_locked(tid)) { //写不进去就说明满了，满了的话就先唤醒等待着的现存下横，让他们消费一下
         flush_nosignal_tasks_remote_locked(_remote_rq._mutex);
         LOG_EVERY_SECOND(ERROR) << "_remote_rq is full, capacity="
                                 << _remote_rq.capacity();
         ::usleep(1000);
         _remote_rq._mutex.lock();
     }
+    //nosignal代表是否唤醒等待队列上的线程，因为现在有新的bthread了，唤醒他们可以让他们来执行
     if (nosignal) {
         ++_remote_num_nosignal;
         _remote_rq._mutex.unlock();
