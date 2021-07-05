@@ -354,7 +354,11 @@ void TaskGroup::_release_last_context(void* arg) {
     }
     return_resource(get_slot(m->tid));
 }
-
+/*
+ * 创建一个新的bthread
+ *   1.如果当前Taskgroup是pthread模式，那么把新创建的pthread放入队列中
+ *   2.如果不是pthread模式，那么sche——to到新创建的task，然后把被还下去的task入队
+ * */
 int TaskGroup::start_foreground(TaskGroup** pg,
                                 bthread_t* __restrict th,
                                 const bthread_attr_t* __restrict attr,
@@ -389,12 +393,12 @@ int TaskGroup::start_foreground(TaskGroup** pg,
 
     TaskGroup* g = *pg;
     g->_control->_nbthreads << 1;
-    if (g->is_current_pthread_task()) { // 当前是pthread模式，第一个task进入pthread就是这宗情况？
+    if (g->is_current_pthread_task()) { // 当前是pthread模式，第一个task进入pthread就是这宗情况？这种情况和下面这种情况都是放到WorkStealingQueue队列，但是看起来bthreadid不一样
         // never create foreground task in pthread.
         g->ready_to_run(m->tid, (using_attr.flags & BTHREAD_NOSIGNAL));
     } else {
         // NOSIGNAL affects current task, not the new task.
-        RemainedFn fn = NULL;
+        RemainedFn fn = NULL; //下面都是放到WorkStealingQueue队列里面
         if (g->current_task()->about_to_quit) {
             fn = ready_to_run_in_worker_ignoresignal;
         } else {
@@ -404,12 +408,12 @@ int TaskGroup::start_foreground(TaskGroup** pg,
             g->current_tid(),
             (bool)(using_attr.flags & BTHREAD_NOSIGNAL)
         };
-        g->set_remained(fn, &args);
-        TaskGroup::sched_to(pg, m->tid);
+        g->set_remained(fn, &args); //保留当前bthread状态
+        TaskGroup::sched_to(pg, m->tid); //切换到新创建的线程
     }
     return 0;
 }
-
+// 和start_foreground差不多，只是start_foreground直接运行新创建的bthread，但是start_background会放到队列里面等待调度
 template <bool REMOTE>
 int TaskGroup::start_background(bthread_t* __restrict th,
                                 const bthread_attr_t* __restrict attr,
@@ -544,7 +548,9 @@ void TaskGroup::ending_sched(TaskGroup** pg) {
     }
     sched_to(pg, next_meta);
 }
-
+/*切换到下一个bthread
+ * 如果当前group队列里没有那么就去steal_task,steal_task不到那么就切换到pthread模式，目前离开看调度算法就是简单的按照队列的顺序区调度
+ * */
 void TaskGroup::sched(TaskGroup** pg) {
     TaskGroup* g = *pg;
     bthread_t next_tid = 0;
@@ -575,11 +581,11 @@ void TaskGroup::sched_to(TaskGroup** pg, TaskMeta* next_meta) {
 
     TaskMeta* const cur_meta = g->_cur_meta;
     const int64_t now = butil::cpuwide_time_ns();
-    const int64_t elp_ns = now - g->_last_run_ns;
+    const int64_t elp_ns = now - g->_last_run_ns;  //赏赐调度的起始时间
     g->_last_run_ns = now;
-    cur_meta->stat.cputime_ns += elp_ns;
+    cur_meta->stat.cputime_ns += elp_ns; //当前bthread一共消耗了多少cpu时间
     if (cur_meta->tid != g->main_tid()) {
-        g->_cumulated_cputime_ns += elp_ns;
+        g->_cumulated_cputime_ns += elp_ns;//该group累积消耗多少cpu时间
     }
     ++cur_meta->stat.nswitch;
     ++ g->_nswitch;
@@ -616,7 +622,7 @@ void TaskGroup::sched_to(TaskGroup** pg, TaskMeta* next_meta) {
     } else {
         LOG(FATAL) << "bthread=" << g->current_tid() << " sched_to itself!";
     }
-
+    //把被换下去的bthread入队
     while (g->_last_context_remained) {
         RemainedFn fn = g->_last_context_remained;
         g->_last_context_remained = NULL;
@@ -722,7 +728,7 @@ void TaskGroup::ready_to_run_in_worker(void* args_in) {
     ReadyToRunArgs* args = static_cast<ReadyToRunArgs*>(args_in);
     return tls_task_group->ready_to_run(args->tid, args->nosignal);
 }
-
+// 人物放到WorkStealingQueue里面
 void TaskGroup::ready_to_run_in_worker_ignoresignal(void* args_in) {
     ReadyToRunArgs* args = static_cast<ReadyToRunArgs*>(args_in);
     return tls_task_group->push_rq(args->tid);

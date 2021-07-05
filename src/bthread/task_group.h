@@ -87,7 +87,7 @@ public:
 
     // The callback will be run in the beginning of next-run bthread.
     // Can't be called by current bthread directly because it often needs
-    // the target to be suspended already.
+    // the target to be suspended already. 这个函数就是下个线程被刚开始调度的时候调用。目前来看这个函数是把被调度下阕的pthread重新进队列
     typedef void (*RemainedFn)(void*);
     void set_remained(RemainedFn cb, void* arg) {
         _last_context_remained = cb;
@@ -135,9 +135,9 @@ public:
 #undef current_task
 #endif
     // Meta/Identifier of current task in this group.
-    TaskMeta* current_task() const { return _cur_meta; }
-    bthread_t current_tid() const { return _cur_meta->tid; }
-    // Uptime of current task in nanoseconds.
+    TaskMeta* current_task() const { return _cur_meta; }  //当前的TaskMeta
+    bthread_t current_tid() const { return _cur_meta->tid; } //当前TaskMeta的tid，就是bthreadid
+    // Uptime of current task in nanoseconds. d
     int64_t current_uptime_ns() const
     { return butil::cpuwide_time_ns() - _cur_meta->cpuwide_start_ns; }
 
@@ -225,17 +225,17 @@ friend class TaskControl;
     int _sched_recursive_guard;
 #endif
 
-    TaskMeta* _cur_meta;
-    
-    // the control that this group belongs to
+    TaskMeta* _cur_meta; //当前正在跑的bthread
+
+        // the control that this group belongs to
     TaskControl* _control;
     int _num_nosignal; // 和_remote_num_nosignal 意义相同，只是对应的队列不同
     int _nsignaled;
     // last scheduling time
-    int64_t _last_run_ns;
-    int64_t _cumulated_cputime_ns;
+    int64_t _last_run_ns;//赏赐调度的起始时间
+    int64_t _cumulated_cputime_ns;//当前group累积消耗多少cpu时间，不统计pthread模式的？？？
 
-    size_t _nswitch;
+    size_t _nswitch;  // 该taskgroup上的pthread一共被切换多少次
     RemainedFn _last_context_remained;
     void* _last_context_remained_arg;
 
@@ -245,11 +245,11 @@ friend class TaskControl;
 #endif
     size_t _steal_seed;
     size_t _steal_offset;
-    ContextualStack* _main_stack;
+    ContextualStack* _main_stack; //目前来看只有int的时候才初始化该对象，感觉他是pthread的堆栈
     bthread_t _main_tid;
     // 看起来是有自己的task就
     WorkStealingQueue<bthread_t> _rq;// 就是一个队列，双向的，头部和尾部都可以pop。如果bthreadworker线程创建的那么就放在这个队列
-    RemoteTaskQueue _remote_rq; //新的bthread写到这个里面，非worker线程创建的就放在这里。
+    RemoteTaskQueue _remote_rq; //新的bthread写到这个里面，非worker线程创建的就放在这里。一般taskgroup拿人物的时候先从WorkStealingQueue里面拿，拿不到再从RemoteTaskQueue拿
     int _remote_num_nosignal; //当前多有少个bthread创建爱你的时候选择不唤醒线程，该书之每次遇到一个唤醒的都会清零。
     int _remote_nsignaled;  //记录唤醒过多少个线程，这个是singal——task参数的和
 };

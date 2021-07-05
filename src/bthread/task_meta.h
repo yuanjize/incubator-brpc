@@ -31,8 +31,8 @@
 namespace bthread {
 
 struct TaskStatistics {
-    int64_t cputime_ns;
-    int64_t nswitch;
+    int64_t cputime_ns; //当前bthread一共消耗了多少cpu时间
+    int64_t nswitch; //该pthread被切换多少次
 };
 
 class KeyTable;
