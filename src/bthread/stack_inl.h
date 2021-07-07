@@ -66,7 +66,7 @@ template <typename StackClass> struct StackFactory {
             }
         }
     };
-    
+    //暂时认为是new Wrapper（）
     static ContextualStack* get_stack(void (*entry)(intptr_t)) {
         return butil::get_object<Wrapper>(entry);
     }
@@ -75,7 +75,7 @@ template <typename StackClass> struct StackFactory {
         butil::return_object(static_cast<Wrapper*>(sc));
     }
 };
-
+// MainStackClass类型的ContextualStack是特殊的，他直接return一个空的ContextualStack和storge
 template <> struct StackFactory<MainStackClass> {
     static ContextualStack* get_stack(void (*)(intptr_t)) {
         ContextualStack* s = new (std::nothrow) ContextualStack;
@@ -92,7 +92,9 @@ template <> struct StackFactory<MainStackClass> {
         delete s;
     }
 };
-
+/*taskgroup初始化的时候需要一个STACK_TYPE_MAIN类型的ContextualStack，除了创建STACK_TYPE_MAIN，其他的类型都是new Wrapper（）
+ *每次创建一个新的taskmeta的时候默认的创建一个STACK_TYPE_NORMAL类型的stack给bthread
+ * */
 inline ContextualStack* get_stack(StackType type, void (*entry)(intptr_t)) {
     switch (type) {
     case STACK_TYPE_PTHREAD:

@@ -29,14 +29,14 @@
 #include "butil/object_pool.h"
 
 namespace bthread {
-
+// 暂时认为是栈指针
 struct StackStorage {
-     int stacksize;
+     int stacksize;// 栈大小
      int guardsize;
     // Assume stack grows upwards.
     // http://www.boost.org/doc/libs/1_55_0/libs/context/doc/html/context/stack.html
-    void* bottom;
-    unsigned valgrind_stack_id;
+    void* bottom;//栈底指针，这个是一个高地址，这个栈是向低地址生长的
+    unsigned valgrind_stack_id; // 目前看就是一个id，具体的不知道干嘛用，根据stacksize和bottom算出来的
 
     // Clears all members.
     void zeroize() {
@@ -52,7 +52,7 @@ int allocate_stack_storage(StackStorage* s, int stacksize, int guardsize);
 // Deallocate a piece of stack. Parameters MUST be returned or set by the
 // corresponding allocate_stack_storage() otherwise behavior is undefined.
 void deallocate_stack_storage(StackStorage* s);
-
+//栈的类型
 enum StackType {
     STACK_TYPE_MAIN = 0,
     STACK_TYPE_PTHREAD = BTHREAD_STACKTYPE_PTHREAD,

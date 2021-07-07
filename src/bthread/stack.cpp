@@ -54,12 +54,12 @@ static bvar::PassiveStatus<int64_t> bvar_stack_count(
     "bthread_stack_count", get_stack_count, NULL);
 
 int allocate_stack_storage(StackStorage* s, int stacksize_in, int guardsize_in) {
-    const static int PAGESIZE = getpagesize();
+    const static int PAGESIZE = getpagesize();//操作系统page大小
     const int PAGESIZE_M1 = PAGESIZE - 1;
-    const int MIN_STACKSIZE = PAGESIZE * 2;
+    const int MIN_STACKSIZE = PAGESIZE * 2; //栈最小也要是page的两页？
     const int MIN_GUARDSIZE = PAGESIZE;
 
-    // Align stacksize
+    // Align stacksize 这里就是把PAGESIZE最左边的1之后的所有1都清零，就是为了和pagesize对齐，就是max(stacksize_in, MIN_STACKSIZE)取得对大的值然后对其，就是栈的大小
     const int stacksize =
         (std::max(stacksize_in, MIN_STACKSIZE) + PAGESIZE_M1) &
         ~PAGESIZE_M1;
@@ -101,7 +101,7 @@ int allocate_stack_storage(StackStorage* s, int stacksize_in, int guardsize_in) 
             return -1;
         }
 
-        void* aligned_mem = (void*)(((intptr_t)mem + PAGESIZE_M1) & ~PAGESIZE_M1);
+        void* aligned_mem = (void*)(((intptr_t)mem + PAGESIZE_M1) & ~PAGESIZE_M1);//内存对其
         if (aligned_mem != mem) {
             LOG_ONCE(ERROR) << "addr=" << mem << " returned by mmap is not "
                 "aligned by pagesize=" << PAGESIZE;

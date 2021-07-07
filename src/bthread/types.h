@@ -121,7 +121,7 @@ static const bthread_attr_t BTHREAD_ATTR_PTHREAD =
 static const bthread_attr_t BTHREAD_ATTR_SMALL =
 { BTHREAD_STACKTYPE_SMALL, 0, NULL };
 static const bthread_attr_t BTHREAD_ATTR_NORMAL =
-{ BTHREAD_STACKTYPE_NORMAL, 0, NULL };
+{ BTHREAD_STACKTYPE_NORMAL, 0, NULL }; //默认是normal的stack类型
 static const bthread_attr_t BTHREAD_ATTR_LARGE =
 { BTHREAD_STACKTYPE_LARGE, 0, NULL };
 
