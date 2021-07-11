@@ -40,114 +40,116 @@ DEFINE_int32(tc_stack_normal, 8, "maximum normal stacks cached by each thread");
 
 namespace bthread {
 
-BAIDU_CASSERT(BTHREAD_STACKTYPE_PTHREAD == STACK_TYPE_PTHREAD, must_match);
-BAIDU_CASSERT(BTHREAD_STACKTYPE_SMALL == STACK_TYPE_SMALL, must_match);
-BAIDU_CASSERT(BTHREAD_STACKTYPE_NORMAL == STACK_TYPE_NORMAL, must_match);
-BAIDU_CASSERT(BTHREAD_STACKTYPE_LARGE == STACK_TYPE_LARGE, must_match);
-BAIDU_CASSERT(STACK_TYPE_MAIN == 0, must_be_0);
+    BAIDU_CASSERT(BTHREAD_STACKTYPE_PTHREAD == STACK_TYPE_PTHREAD, must_match);
+    BAIDU_CASSERT(BTHREAD_STACKTYPE_SMALL == STACK_TYPE_SMALL, must_match);
+    BAIDU_CASSERT(BTHREAD_STACKTYPE_NORMAL == STACK_TYPE_NORMAL, must_match);
+    BAIDU_CASSERT(BTHREAD_STACKTYPE_LARGE == STACK_TYPE_LARGE, must_match);
+    BAIDU_CASSERT(STACK_TYPE_MAIN == 0, must_be_0);
 
-static butil::static_atomic<int64_t> s_stack_count = BUTIL_STATIC_ATOMIC_INIT(0);
-static int64_t get_stack_count(void*) {
-    return s_stack_count.load(butil::memory_order_relaxed);
-}
-static bvar::PassiveStatus<int64_t> bvar_stack_count(
-    "bthread_stack_count", get_stack_count, NULL);
+    static butil::static_atomic<int64_t> s_stack_count = BUTIL_STATIC_ATOMIC_INIT(0);
 
-int allocate_stack_storage(StackStorage* s, int stacksize_in, int guardsize_in) {
-    const static int PAGESIZE = getpagesize();//操作系统page大小
-    const int PAGESIZE_M1 = PAGESIZE - 1;
-    const int MIN_STACKSIZE = PAGESIZE * 2; //栈最小也要是page的两页？
-    const int MIN_GUARDSIZE = PAGESIZE;
+    static int64_t get_stack_count(void *) {
+        return s_stack_count.load(butil::memory_order_relaxed);
+    }
 
-    // Align stacksize 这里就是把PAGESIZE最左边的1之后的所有1都清零，就是为了和pagesize对齐，就是max(stacksize_in, MIN_STACKSIZE)取得对大的值然后对其，就是栈的大小
-    const int stacksize =
-        (std::max(stacksize_in, MIN_STACKSIZE) + PAGESIZE_M1) &
-        ~PAGESIZE_M1;
+    static bvar::PassiveStatus<int64_t> bvar_stack_count(
+            "bthread_stack_count", get_stack_count, NULL);
 
-    if (guardsize_in <= 0) {
-        void* mem = malloc(stacksize);
-        if (NULL == mem) {
-            PLOG_EVERY_SECOND(ERROR) << "Fail to malloc (size="
-                                     << stacksize << ")";
-            return -1;
-        }
-        s_stack_count.fetch_add(1, butil::memory_order_relaxed);
-        s->bottom = (char*)mem + stacksize;
-        s->stacksize = stacksize;
-        s->guardsize = 0;
-        if (RunningOnValgrind()) {
-            s->valgrind_stack_id = VALGRIND_STACK_REGISTER(
-                s->bottom, (char*)s->bottom - stacksize);
+    int allocate_stack_storage(StackStorage *s, int stacksize_in, int guardsize_in) {
+        const static int PAGESIZE = getpagesize();//操作系统page大小
+        const int PAGESIZE_M1 = PAGESIZE - 1;
+        const int MIN_STACKSIZE = PAGESIZE * 2; //栈最小也要是page的两页？
+        const int MIN_GUARDSIZE = PAGESIZE;
+
+        // Align stacksize 这里就是把PAGESIZE最左边的1之后的所有1都清零，就是为了和pagesize对齐，就是max(stacksize_in, MIN_STACKSIZE)取得对大的值然后对其，就是栈的大小
+        const int stacksize =
+                (std::max(stacksize_in, MIN_STACKSIZE) + PAGESIZE_M1) &
+                ~PAGESIZE_M1;
+
+        if (guardsize_in <= 0) {
+            void *mem = malloc(stacksize);
+            if (NULL == mem) {
+                PLOG_EVERY_SECOND(ERROR) << "Fail to malloc (size="
+                                         << stacksize << ")";
+                return -1;
+            }
+            s_stack_count.fetch_add(1, butil::memory_order_relaxed);
+            s->bottom = (char *) mem + stacksize;
+            s->stacksize = stacksize;
+            s->guardsize = 0;
+            if (RunningOnValgrind()) {
+                s->valgrind_stack_id = VALGRIND_STACK_REGISTER(
+                        s->bottom, (char *) s->bottom - stacksize);
+            } else {
+                s->valgrind_stack_id = 0;
+            }
+            return 0;
         } else {
-            s->valgrind_stack_id = 0;
-        }
-        return 0;
-    } else {
-        // Align guardsize
-        const int guardsize =
-            (std::max(guardsize_in, MIN_GUARDSIZE) + PAGESIZE_M1) &
-            ~PAGESIZE_M1;
+            // Align guardsize 先认为是一个page
+            const int guardsize =
+                    (std::max(guardsize_in, MIN_GUARDSIZE) + PAGESIZE_M1) &
+                    ~PAGESIZE_M1;
 
-        const int memsize = stacksize + guardsize;
-        void* const mem = mmap(NULL, memsize, (PROT_READ | PROT_WRITE),
-                               (MAP_PRIVATE | MAP_ANONYMOUS), -1, 0);
+            const int memsize = stacksize + guardsize;//大概三个page
+            void *const mem = mmap(NULL, memsize, (PROT_READ | PROT_WRITE),
+                                   (MAP_PRIVATE | MAP_ANONYMOUS), -1, 0); //分配空间
 
-        if (MAP_FAILED == mem) {
-            PLOG_EVERY_SECOND(ERROR) 
-                << "Fail to mmap size=" << memsize << " stack_count="
-                << s_stack_count.load(butil::memory_order_relaxed)
-                << ", possibly limited by /proc/sys/vm/max_map_count";
-            // may fail due to limit of max_map_count (65536 in default)
-            return -1;
-        }
+            if (MAP_FAILED == mem) {
+                PLOG_EVERY_SECOND(ERROR)
+                        << "Fail to mmap size=" << memsize << " stack_count="
+                        << s_stack_count.load(butil::memory_order_relaxed)
+                        << ", possibly limited by /proc/sys/vm/max_map_count";
+                // may fail due to limit of max_map_count (65536 in default)
+                return -1;
+            }
 
-        void* aligned_mem = (void*)(((intptr_t)mem + PAGESIZE_M1) & ~PAGESIZE_M1);//内存对其
-        if (aligned_mem != mem) {
-            LOG_ONCE(ERROR) << "addr=" << mem << " returned by mmap is not "
-                "aligned by pagesize=" << PAGESIZE;
-        }
-        const int offset = (char*)aligned_mem - (char*)mem;
-        if (guardsize <= offset ||
-            mprotect(aligned_mem, guardsize - offset, PROT_NONE) != 0) {
-            munmap(mem, memsize);
-            PLOG_EVERY_SECOND(ERROR) 
-                << "Fail to mprotect " << (void*)aligned_mem << " length="
-                << guardsize - offset; 
-            return -1;
-        }
+            void *aligned_mem = (void *) (((intptr_t) mem + PAGESIZE_M1) & ~PAGESIZE_M1);//内存对其
+            if (aligned_mem != mem) {
+                LOG_ONCE(ERROR) << "addr=" << mem << " returned by mmap is not "
+                                                     "aligned by pagesize=" << PAGESIZE;
+            }
+            const int offset = (char *) aligned_mem - (char *) mem;//因为对齐浪费的空间
+            if (guardsize <= offset ||
+                mprotect(aligned_mem, guardsize - offset, PROT_NONE) != 0) {
+                munmap(mem, memsize);
+                PLOG_EVERY_SECOND(ERROR)
+                        << "Fail to mprotect " << (void *) aligned_mem << " length="
+                        << guardsize - offset;
+                return -1;
+            }
 
-        s_stack_count.fetch_add(1, butil::memory_order_relaxed);
-        s->bottom = (char*)mem + memsize;
-        s->stacksize = stacksize;
-        s->guardsize = guardsize;
+            s_stack_count.fetch_add(1, butil::memory_order_relaxed);
+            s->bottom = (char *) mem + memsize;
+            s->stacksize = stacksize;
+            s->guardsize = guardsize;
+            if (RunningOnValgrind()) {
+                s->valgrind_stack_id = VALGRIND_STACK_REGISTER(
+                        s->bottom, (char *) s->bottom - stacksize);
+            } else {
+                s->valgrind_stack_id = 0;
+            }
+            return 0;
+        }
+    }
+
+    void deallocate_stack_storage(StackStorage *s) {
         if (RunningOnValgrind()) {
-            s->valgrind_stack_id = VALGRIND_STACK_REGISTER(
-                s->bottom, (char*)s->bottom - stacksize);
-        } else {
-            s->valgrind_stack_id = 0;
+            VALGRIND_STACK_DEREGISTER(s->valgrind_stack_id);
         }
-        return 0;
+        const int memsize = s->stacksize + s->guardsize;
+        if ((uintptr_t) s->bottom <= (uintptr_t) memsize) {
+            return;
+        }
+        s_stack_count.fetch_sub(1, butil::memory_order_relaxed);
+        if (s->guardsize <= 0) {
+            free((char *) s->bottom - memsize);
+        } else {
+            munmap((char *) s->bottom - memsize, memsize);
+        }
     }
-}
 
-void deallocate_stack_storage(StackStorage* s) {
-    if (RunningOnValgrind()) {
-        VALGRIND_STACK_DEREGISTER(s->valgrind_stack_id);
-    }
-    const int memsize = s->stacksize + s->guardsize;
-    if ((uintptr_t)s->bottom <= (uintptr_t)memsize) {
-        return;
-    }
-    s_stack_count.fetch_sub(1, butil::memory_order_relaxed);
-    if (s->guardsize <= 0) {
-        free((char*)s->bottom - memsize);
-    } else {
-        munmap((char*)s->bottom - memsize, memsize);
-    }
-}
-
-int* SmallStackClass::stack_size_flag = &FLAGS_stack_size_small;
-int* NormalStackClass::stack_size_flag = &FLAGS_stack_size_normal;
-int* LargeStackClass::stack_size_flag = &FLAGS_stack_size_large;
+    int *SmallStackClass::stack_size_flag = &FLAGS_stack_size_small;
+    int *NormalStackClass::stack_size_flag = &FLAGS_stack_size_normal;
+    int *LargeStackClass::stack_size_flag = &FLAGS_stack_size_large;
 
 }  // namespace bthread
