@@ -144,7 +144,7 @@ public:
     // True iff current task is the one running run_main_task()
     bool is_current_main_task() const { return current_tid() == _main_tid; }
     // True iff current task is in pthread-mode.
-    bool is_current_pthread_task() const
+    bool is_current_pthread_task() const  //当前是不是pthread
     { return _cur_meta->stack == _main_stack; }
 
     // Active time in nanoseconds spent by this TaskGroup.
@@ -245,7 +245,7 @@ friend class TaskControl;
 #endif
     size_t _steal_seed;
     size_t _steal_offset;
-    ContextualStack* _main_stack; //目前来看只有int的时候才初始化该对象，感觉他是pthread的堆栈
+    ContextualStack* _main_stack; //目前来看只有int的时候才初始化该对象，感觉他是pthread的堆栈。这玩意其实就是一个空的东西，只有类型没有空间
     bthread_t _main_tid;
     // 看起来是有自己的task就
     WorkStealingQueue<bthread_t> _rq;// 就是一个队列，双向的，头部和尾部都可以pop。如果bthreadworker线程创建的那么就放在这个队列

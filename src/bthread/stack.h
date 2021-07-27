@@ -62,9 +62,9 @@ enum StackType {
 };
 
 struct ContextualStack {
-    bthread_fcontext_t context;
+    bthread_fcontext_t context; // 目前来看就是存放finish函数函数值镇，该地址也是堆栈的接近堆栈底部的地址。finish擦欧在哦：1。清空rdi 2.调用exit系统调用
     StackType stacktype;
-    StackStorage storage;
+    StackStorage storage; //目前来看就是堆栈指针和堆栈的一些相关信息
 };
 
 // Get a stack in the `type' and run `entry' at the first time that the

@@ -55,10 +55,11 @@ inline void TaskGroup::exchange(TaskGroup** pg, bthread_t next_tid) {
     g->set_remained((g->current_task()->about_to_quit
                      ? ready_to_run_in_worker_ignoresignal
                      : ready_to_run_in_worker),
-                    &args);
+                    &args); //保证当前被调度下去的bthread入队
     TaskGroup::sched_to(pg, next_tid);
 }
-
+// 从这里可以看出bthread创建之后，第一次调度之前没有分配堆栈
+// 两个sched_to基本可以认为是一样的
 inline void TaskGroup::sched_to(TaskGroup** pg, bthread_t next_tid) {
     TaskMeta* next_meta = address_meta(next_tid);
     if (next_meta->stack == NULL) {

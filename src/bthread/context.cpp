@@ -333,7 +333,22 @@ __asm (
 );
 
 #endif
+/*
+ * rsp=rsp-8
+*ofc= rsp //保存当前线程的栈
+rsp=nfc   //切换到新线程
+rsp=rsp+8
+第一个参数 = vp
+return vp
+bthread_jump_fcontext(bthread_fcontext_t * ofc, bthread_fcontext_t nfc,
+                      intptr_t vp, bool preserve_fpu = false);
 
+
+%rcx	第四个参数  bool preserve_fpu = false
+%rdx	第三个参数  intptr_t vp
+%rsi	第二个参数  bthread_fcontext_t nfc
+%rdi	第一个参数  bthread_fcontext_t * ofc
+ * */
 #if defined(BTHREAD_CONTEXT_PLATFORM_linux_x86_64) && defined(BTHREAD_CONTEXT_COMPILER_gcc)
 __asm (
 ".text\n"
@@ -353,8 +368,8 @@ __asm (
 "    stmxcsr  (%rsp)\n"
 "    fnstcw   0x4(%rsp)\n"
 "1:\n"
-"    movq  %rsp, (%rdi)\n"
-"    movq  %rsi, %rsp\n"
+"    movq  %rsp, (%rdi)\n"  // *ofc= rsp
+"    movq  %rsi, %rsp\n"    // rsp=nfc
 "    cmp  $0, %rcx\n"
 "    je  2f\n"
 "    ldmxcsr  (%rsp)\n"
@@ -368,16 +383,17 @@ __asm (
 "    popq  %rbx  \n"
 "    popq  %rbp  \n"
 "    popq  %r8\n"
-"    movq  %rdx, %rax\n"
+"    movq  %rdx, %rax\n"  //return rax=参数三
 "    movq  %rdx, %rdi\n"
-"    jmp  *%r8\n"
+"    jmp  *%r8\n"         //继续之前的代码执行
 ".size bthread_jump_fcontext,.-bthread_jump_fcontext\n"
 ".section .note.GNU-stack,\"\",%progbits\n"
 ".previous\n"
 );
 
 #endif
-
+// 这个函数使用了堆栈的最先的76字节，从低知道高地址：8字节留空 8字节保存finish的地址 8字节放entry函数的地址 44字节留空 4字节放mxcsr的当前状态 4字节放协处理器的状态值 .
+// 函数返回值是finish的地址
 #if defined(BTHREAD_CONTEXT_PLATFORM_linux_x86_64) && defined(BTHREAD_CONTEXT_COMPILER_gcc)
 __asm (
 ".text\n"
@@ -385,18 +401,18 @@ __asm (
 ".type bthread_make_fcontext,@function\n"
 ".align 16\n"
 "bthread_make_fcontext:\n"
-"    movq  %rdi, %rax\n"
-"    andq  $-16, %rax\n"
-"    leaq  -0x48(%rax), %rax\n"
-"    movq  %rdx, 0x38(%rax)\n"
-"    stmxcsr  (%rax)\n"
-"    fnstcw   0x4(%rax)\n"
-"    leaq  finish(%rip), %rcx\n"
-"    movq  %rcx, 0x40(%rax)\n"
+"    movq  %rdi, %rax\n"  //第一个参数。该参数是堆栈的bottom地址，也就是其实地址。该堆栈向低地址增长
+"    andq  $-16, %rax\n"  //不知道干什么用的。网上说是对其用的
+"    leaq  -0x48(%rax), %rax\n" // rax=rax-72
+"    movq  %rdx, 0x38(%rax)\n"  // ×（rax+56）=rdx。rdx是第三个参数，是一个函数地址（entry） 8字节
+"    stmxcsr  (%rax)\n"  //先知道push了一个寄存器就行 ×（rax）=mxcsr
+"    fnstcw   0x4(%rax)\n"// 保存协处理器控制字，4字节。不知道干什么的。先不管。到现在，之前分配出来的72个字节用完了。
+"    leaq  finish(%rip), %rcx\n" // 这里不动，看起来就是把finish的地址放在rcx里面了
+"    movq  %rcx, 0x40(%rax)\n"  // rax用来存放return值，这里就是finish的地址
 "    ret \n"
 "finish:\n"
-"    xorq  %rdi, %rdi\n"
-"    call  _exit@PLT\n"
+"    xorq  %rdi, %rdi\n" // rdi清空
+"    call  _exit@PLT\n"  //使用_exit系统调用
 "    hlt\n"
 ".size bthread_make_fcontext,.-bthread_make_fcontext\n"
 ".section .note.GNU-stack,\"\",%progbits\n"

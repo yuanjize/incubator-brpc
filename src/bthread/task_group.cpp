@@ -218,6 +218,7 @@ int TaskGroup::init(size_t runqueue_capacity) {
         LOG(FATAL) << "Fail to init _remote_rq";
         return -1;
     }
+    // 在堆或者mmap上分配了栈，main类型其实当前操作是空操作，目前看起来只给bthread分配 stack
     ContextualStack* stk = get_stack(STACK_TYPE_MAIN, NULL);
     if (NULL == stk) {
         LOG(FATAL) << "Fail to get main stack container";
@@ -608,7 +609,7 @@ void TaskGroup::sched_to(TaskGroup** pg, TaskMeta* next_meta) {
             if (next_meta->stack != cur_meta->stack) {
                 jump_stack(cur_meta->stack, next_meta->stack);
                 // probably went to another group, need to assign g again.
-                g = tls_task_group;
+                g = tls_task_group;  //没看懂，taskgroup有可能变？
             }
 #ifndef NDEBUG
             else {
